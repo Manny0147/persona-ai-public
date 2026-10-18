@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0b10" />
+  <title>Persona-AI · Approval Gate</title>
+  <style>
+    :root {
+      --bg: #0a0b10;
+      --surface: #12141c;
+      --surface-2: #1a1d28;
+      --border: rgba(255,255,255,0.08);
+      --text: #eef0f6;
+      --muted: #8b90a5;
+      --accent: #7b8cff;
+      --accent-glow: rgba(123,140,255,0.35);
+      --success: #3dd68c;
+      --danger: #ff6b7a;
+      --warn: #f5c542;
+      --radius: 16px;
+      --font: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+    .app {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 16px 16px 100px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 0 20px;
+      position: sticky;
+      top: 0;
+      background: linear-gradient(180deg, var(--bg) 70%, transparent);
+      z-index: 10;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(145deg, #8b9cff 0%, #5b6fd9 50%, #3d4fb8 100%);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 0 24px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.25);
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: -0.02em;
+      color: #fff;
+    }
+    .brand-text h1 {
+      font-size: 1.15rem;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+    .brand-text p {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .status-pill {
+      font-size: 0.7rem;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .status-pill.live { color: var(--success); border-color: rgba(61,214,140,0.3); }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 12px;
+      text-align: center;
+    }
+    .stat .n {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    .stat .l {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .section-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 8px 0 12px;
+      font-weight: 600;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: border-color 0.2s, transform 0.15s;
+    }
+    .card:active { transform: scale(0.99); }
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .platform {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      background: rgba(123,140,255,0.12);
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    .time {
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    .body-text {
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-bottom: 12px;
+    }
+    .rationale {
+      font-size: 0.78rem;
+      color: var(--muted);
+      border-left: 2px solid var(--border);
+      padding-left: 10px;
+      margin-bottom: 14px;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button {
+      font-family: inherit;
+      border: none;
+      cursor: pointer;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 10px 14px;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-approve {
+      background: linear-gradient(180deg, #4ae89a, #2bbf72);
+      color: #062816;
+      flex: 1;
+    }
+    .btn-reject {
+      background: var(--surface-2);
+      color: var(--danger);
+      border: 1px solid rgba(255,107,122,0.25);
+    }
+    .btn-edit {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-publish {
+      background: linear-gradient(180deg, #8b9cff, #5b6fd9);
+      color: #fff;
+      flex: 1;
+    }
+    .btn-cycle {
+      width: 100%;
+      margin-top: 8px;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 14px;
+      font-size: 0.9rem;
+    }
+    .btn-cycle.pulse {
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+      50% { box-shadow: 0 0 0 8px transparent; }
+    }
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      z-index: 100;
+      opacity: 0;
+      transition: all 0.3s ease;
+      max-width: 90%;
+      text-align: center;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 50;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal.open { display: flex; }
+    .modal-sheet {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px 20px 16px 16px;
+      width: 100%;
+      max-width: 480px;
+      padding: 20px;
+      max-height: 80dvh;
+      overflow-y: auto;
+    }
+    .modal-sheet h3 {
+      font-size: 1rem;
+      margin-bottom: 12px;
+    }
+    .modal-sheet textarea {
+      width: 100%;
+      min-height: 120px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      padding: 12px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      resize: vertical;
+      margin-bottom: 12px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .modal-actions button { flex: 1; }
+    .btn-save {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-cancel {
+      background: var(--surface-2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="logo">P</div>
+        <div class="brand-text">
+          <h1>Approval Gate</h1>
+          <p>Persona-AI Public · v1.1</p>
+        </div>
+      </div>
+      <div class="status-pill" id="statusPill">…</div>
+    </header>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="statPending">–</div><div class="l">Pending</div></div>
+      <div class="stat"><div class="n" id="statScheduled">–</div><div class="l">Scheduled</div></div>
+      <div class="stat"><div class="n" id="statTrends">–</div><div class="l">Trends</div></div>
+    </div>
+
+    <div class="section-title">Queue</div>
+    <div id="list"></div>
+    <button class="btn-cycle" id="btnCycle" onclick="runCycle()">Run Cycle</button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="modal" id="editModal">
+    <div class="modal-sheet">
+      <h3>Edit draft</h3>
+      <textarea id="editText"></textarea>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeEdit()">Cancel</button>
+        <button class="btn-save" onclick="saveEdit()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = "";
+    let editId = null;
+    let current = null;
+
+    function toast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 2800);
+    }
+
+    function fmtTime(iso) {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      } catch { return iso; }
+    }
+
+    function payloadText(p) {
+      if (!p) return "";
+      if (typeof p === "string") return p;
+      return p.text || p.title || p.caption || p.description || JSON.stringify(p);
+    }
+
+    async function refresh() {
+      try {
+        const [status, pending, scheduled, trends] = await Promise.all([
+          fetch(API + "/api/status").then((r) => r.json()),
+          fetch(API + "/api/drafts/pending").then((r) => r.json()),
+          fetch(API + "/api/drafts/scheduled").then((r) => r.json()),
+          fetch(API + "/api/trends?limit=5").then((r) => r.json()),
+        ]);
+        document.getElementById("statPending").textContent = pending.length ?? 0;
+        document.getElementById("statScheduled").textContent = scheduled.length ?? 0;
+        document.getElementById("statTrends").textContent = Array.isArray(trends) ? trends.length : "–";
+        const pill = document.getElementById("statusPill");
+        pill.textContent = status?.dryRun ? "Dry-run" : "Live";
+        pill.classList.toggle("live", !status?.dryRun);
+
+        const list = document.getElementById("list");
+        const items = [...(pending || []), ...(scheduled || [])];
+        if (!items.length) {
+          list.innerHTML = '<div class="empty">No drafts waiting. Run a cycle to generate one.</div>';
+          return;
+        }
+        list.innerHTML = items.map((d) => {
+          const text = payloadText(d.payload);
+          const isScheduled = d.status === "scheduled";
+          return `
+            <div class="card" data-id="${d.id}">
+              <div class="card-head">
+                <span class="platform">${d.platform}</span>
+                <span class="time">${isScheduled ? "⏰ " + fmtTime(d.scheduledFor) : fmtTime(d.createdAt)}</span>
+              </div>
+              <div class="body-text">${escapeHtml(text)}</div>
+              ${d.rationale ? `<div class="rationale">${escapeHtml(d.rationale)}</div>` : ""}
+              <div class="actions">
+                ${d.status === "pending" ? `
+                  <button class="btn-approve" onclick="approve('${d.id}')">Approve</button>
+                  <button class="btn-edit" onclick="openEdit('${d.id}')">Edit</button>
+                  <button class="btn-reject" onclick="reject('${d.id}')">Reject</button>
+                ` : `
+                  <button class="btn-publish" onclick="publish('${d.id}')">Publish now</button>
+                `}
+              </div>
+            </div>`;
+        }).join("");
+      } catch (e) {
+        toast("Could not load queue");
+        console.error(e);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function approve(id) {
+      const r = await fetch(API + `/api/drafts/${id}/approve`, { method: "POST" });
+      if (!r.ok) {
+        const d = await r.json();
+        return toast(d.error || "Approve failed");
+      }
+      toast("Approved — ready to publish");
+      refresh();
+    }
+
+    async function reject(id) {
+      const r = await fetch(API + `/api/drafts/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Rejected from UI" }),
+      });
+      if (!r.ok) {
+        const d = await r.json();
+        return toast(d.error || "Reject failed");
+      }
+      toast("Rejected");
+      refresh();
+    }
+
+    async function publish(id) {
+      const r = await fetch(API + `/api/drafts/${id}/publish`, { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) return toast(d.error || "Publish failed");
+      toast(d.status === "published" ? "Published" : "Publish result: " + d.status);
+      refresh();
+    }
+
+    function openEdit(id) {
+      editId = id;
+      fetch(API + `/api/drafts/${id}`)
+        .then((r) => r.json())
+        .then((d) => {
+          current = d;
+          document.getElementById("editText").value = payloadText(d.payload);
+          document.getElementById("editModal").classList.add("open");
+        });
+    }
+
+    function closeEdit() {
+      document.getElementById("editModal").classList.remove("open");
+      editId = null;
+      current = null;
+    }
+
+    async function saveEdit() {
+      if (!editId || !current) return;
+      const text = document.getElementById("editText").value;
+      const payload = { ...(current.payload || {}) };
+      if (payload.text !== undefined || !payload.title) payload.text = text;
+      else payload.title = text;
+      const r = await fetch(API + `/api/drafts/${editId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload }),
+      });
+      if (!r.ok) {
+        const d = await r.json();
+        return toast(d.error || "Edit failed");
+      }
+      toast("Draft updated");
+      closeEdit();
+      refresh();
+    }
+
+    async function runCycle() {
+      const btn = document.getElementById("btnCycle");
+      btn.disabled = true;
+      btn.classList.add("pulse");
+      btn.textContent = "Thinking…";
+      try {
+        const r = await fetch(API + "/api/cycle", { method: "POST" });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Cycle failed");
+        toast(`Draft ready · ${d.platform}`);
+        await refresh();
+      } catch (e) {
+        toast(e.message || "Cycle failed");
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove("pulse");
+        btn.textContent = "Run Cycle";
+      }
+    }
+
+    document.getElementById("editModal").addEventListener("click", (e) => {
+      if (e.target.id === "editModal") closeEdit();
+    });
+
+    refresh();
+    setInterval(refresh, 28000);
+  </script>
+</body>
+</html>
