@@ -31,6 +31,13 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
+  "keywords": [
+    "ai-agent",
+    "mcp",
+    "social-media",
+    "orchestration",
+    "approval-gate"
+  ],
   "license": "MIT",
   "author": "Persona-AI Contributors"
 }
