@@ -27,9 +27,11 @@ export function createMcpRouter() {
     }
   });
 
+  // Convenience aliases matching common agent patterns
   router.post("/tools/:name", async (req: Request, res: Response) => {
     try {
-      const result = await callTool(req.params.name, req.body ?? {});
+      const name = Array.isArray(req.params.name) ? req.params.name[0] : req.params.name;
+      const result = await callTool(name, req.body ?? {});
       res.json({ ok: true, result });
     } catch (err: any) {
       res.status(400).json({ ok: false, error: err.message || String(err) });
