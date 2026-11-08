@@ -35,6 +35,14 @@
       background: linear-gradient(180deg, var(--bg) 65%, transparent);
     }
     .brand { display: flex; align-items: center; gap: 12px; }
+    .back-btn {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      color: var(--text); display: grid; place-items: center;
+      font-size: 1.1rem; cursor: pointer; transition: all 0.15s;
+    }
+    .back-btn:hover { border-color: rgba(139,156,255,0.4); transform: translateX(-2px); }
+    .back-btn:active { transform: scale(0.94); }
     .logo {
       width: 42px; height: 42px; border-radius: 13px;
       background: linear-gradient(145deg, #9aaaff, #5b6fd9 55%, #3d4fb8);
@@ -170,6 +178,7 @@
   <div class="app">
     <header>
       <div class="brand">
+        <button class="back-btn" onclick="history.back()" title="Back">←</button>
         <div class="logo">P</div>
         <div class="brand-text">
           <h1>Approval Gate</h1>
@@ -261,7 +270,7 @@
               </div>
               <div class="body-text">${escapeHtml(text)}</div>
               ${d.rationale ? `<div class="rationale">${escapeHtml(d.rationale)}</div>` : ""}
-              <div class="actions">{
+              <div class="actions">
                 ${d.status === "pending" ? `
                   <button class="btn-approve" onclick="approve('${d.id}')">Approve</button>
                   <button class="btn-edit" onclick="openEdit('${d.id}')">Edit</button>
