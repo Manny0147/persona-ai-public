@@ -29,66 +29,6 @@ export interface Draft {
   errorMessage?: string;
 }
 
-export function createDraft(
-  platform: PlatformName,
-  payload: ContentPayload,
-  rationale?: string,
-  contentType = "post",
-  opportunityId?: string
-): Draft {
-  const id = uuid();
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO drafts (id, platform, content_type, payload_json, rationale, opportunity_id, status)
-     VALUES (?, ?, ?, ?, ?, ?, 'pending')`
-  ).run(
-    id,
-    platform,
-    contentType,
-    JSON.stringify(payload),
-    rationale ?? null,
-    opportunityId ?? null
-  );
-
-  logger.info(`Draft created: ${id} for ${platform}`);
-  return getDraft(id)!;
-}
-
-export function getDraft(id: string): Draft | null {
-  const db = getDb();
-  const row = db.prepare(`SELECT * FROM drafts WHERE id = ?`).get(id) as any;
-  if (!row) return null;
-  return mapRow(row);
-}
-
-export function listPendingDrafts(): Draft[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT * FROM drafts WHERE status = 'pending' ORDER BY created_at DESC`
-    )
-    .all() as any[];
-  return rows.map(mapRow);
-}
-
-export function listScheduledDrafts(): Draft[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT * FROM drafts WHERE status = 'scheduled' ORDER BY scheduled_for ASC`
-    )
-    .all() as any[];
-  return rows.map(mapRow);
-}
-
-export function listDrafts(limit = 50): Draft[] {
-  const db = getDb();
-  const rows = db
-    .prepare(`SELECT * FROM drafts ORDER BY created_at DESC LIMIT ?`)
-    .all(limit) as any[];
-  return rows.map(mapRow);
-}
-
 function mapRow(row: any): Draft {
   return {
     id: row.id,
@@ -106,71 +46,105 @@ function mapRow(row: any): Draft {
   };
 }
 
-export function approveDraft(id: string): Draft {
-  const draft = getDraft(id);
+export async function createDraft(
+  platform: PlatformName,
+  payload: ContentPayload,
+  rationale?: string,
+  contentType = "post",
+  opportunityId?: string
+): Promise<Draft> {
+  const id = uuid();
+  const sql = await getDb();
+  await sql`
+    INSERT INTO drafts (id, platform, content_type, payload_json, rationale, opportunity_id, status)
+    VALUES (${id}, ${platform}, ${contentType}, ${JSON.stringify(payload)}, ${rationale ?? null}, ${opportunityId ?? null}, 'pending')
+  `;
+
+  logger.info(`Draft created: ${id} for ${platform}`);
+  return (await getDraft(id))!;
+}
+
+export async function getDraft(id: string): Promise<Draft | null> {
+  const sql = await getDb();
+  const rows = await sql`SELECT * FROM drafts WHERE id = ${id}`;
+  if (rows.length === 0) return null;
+  return mapRow(rows[0]);
+}
+
+export async function listPendingDrafts(): Promise<Draft[]> {
+  const sql = await getDb();
+  const rows = await sql`SELECT * FROM drafts WHERE status = 'pending' ORDER BY created_at DESC`;
+  return rows.map(mapRow);
+}
+
+export async function listScheduledDrafts(): Promise<Draft[]> {
+  const sql = await getDb();
+  const rows = await sql`SELECT * FROM drafts WHERE status = 'scheduled' ORDER BY scheduled_for ASC`;
+  return rows.map(mapRow);
+}
+
+export async function listDrafts(limit = 50): Promise<Draft[]> {
+  const sql = await getDb();
+  const rows = await sql`SELECT * FROM drafts ORDER BY created_at DESC LIMIT ${limit}`;
+  return rows.map(mapRow);
+}
+
+export async function approveDraft(id: string): Promise<Draft> {
+  const draft = await getDraft(id);
   if (!draft) throw new Error("Draft not found");
   if (draft.status !== "pending" && draft.status !== "scheduled") {
     throw new Error(`Cannot approve status: ${draft.status}`);
   }
 
-  const db = getDb();
-  db.prepare(
-    `UPDATE drafts SET status = 'approved', decided_at = datetime('now') WHERE id = ?`
-  ).run(id);
+  const sql = await getDb();
+  await sql`UPDATE drafts SET status = 'approved', decided_at = now() WHERE id = ${id}`;
 
-  recordLearningEvent("approval", { platform: draft.platform }, id);
+  await recordLearningEvent("approval", { platform: draft.platform }, id);
   logger.info(`Draft approved: ${id}`);
-  return getDraft(id)!;
+  return (await getDraft(id))!;
 }
 
-export function rejectDraft(id: string, reason?: string): Draft {
-  const draft = getDraft(id);
+export async function rejectDraft(id: string, reason?: string): Promise<Draft> {
+  const draft = await getDraft(id);
   if (!draft) throw new Error("Draft not found");
   if (draft.status !== "pending" && draft.status !== "scheduled") {
     throw new Error(`Cannot reject status: ${draft.status}`);
   }
 
-  const db = getDb();
-  db.prepare(
-    `UPDATE drafts SET status = 'rejected', decided_at = datetime('now'), error_message = ? WHERE id = ?`
-  ).run(reason ?? null, id);
+  const sql = await getDb();
+  await sql`UPDATE drafts SET status = 'rejected', decided_at = now(), error_message = ${reason ?? null} WHERE id = ${id}`;
 
-  recordLearningEvent("rejection", { platform: draft.platform, reason }, id);
+  await recordLearningEvent("rejection", { platform: draft.platform, reason }, id);
   logger.info(`Draft rejected: ${id}`);
-  return getDraft(id)!;
+  return (await getDraft(id))!;
 }
 
-export function scheduleDraft(id: string, scheduledFor: string): Draft {
-  const draft = getDraft(id);
+export async function scheduleDraft(id: string, scheduledFor: string): Promise<Draft> {
+  const draft = await getDraft(id);
   if (!draft) throw new Error("Draft not found");
   if (draft.status !== "pending" && draft.status !== "approved") {
     throw new Error(`Cannot schedule status: ${draft.status}`);
   }
 
-  const db = getDb();
-  db.prepare(
-    `UPDATE drafts SET status = 'scheduled', scheduled_for = ?, decided_at = datetime('now') WHERE id = ?`
-  ).run(scheduledFor, id);
+  const sql = await getDb();
+  await sql`UPDATE drafts SET status = 'scheduled', scheduled_for = ${scheduledFor}, decided_at = now() WHERE id = ${id}`;
 
   logger.info(`Draft scheduled: ${id} → ${scheduledFor}`);
-  return getDraft(id)!;
+  return (await getDraft(id))!;
 }
 
-export function updateDraftPayload(id: string, payload: ContentPayload): Draft {
-  const draft = getDraft(id);
+export async function updateDraftPayload(id: string, payload: ContentPayload): Promise<Draft> {
+  const draft = await getDraft(id);
   if (!draft) throw new Error("Draft not found");
   if (draft.status !== "pending") throw new Error("Can only edit pending drafts");
 
-  const db = getDb();
-  db.prepare(`UPDATE drafts SET payload_json = ? WHERE id = ?`).run(
-    JSON.stringify(payload),
-    id
-  );
-  return getDraft(id)!;
+  const sql = await getDb();
+  await sql`UPDATE drafts SET payload_json = ${JSON.stringify(payload)} WHERE id = ${id}`;
+  return (await getDraft(id))!;
 }
 
 export async function publishApprovedDraft(id: string): Promise<Draft> {
-  const draft = getDraft(id);
+  const draft = await getDraft(id);
   if (!draft) throw new Error("Draft not found");
   if (draft.status !== "approved" && draft.status !== "scheduled") {
     throw new Error(
@@ -181,34 +155,24 @@ export async function publishApprovedDraft(id: string): Promise<Draft> {
   const adapter = getAdapter(draft.platform);
   const result = await adapter.publish(draft.payload);
 
-  const db = getDb();
+  const sql = await getDb();
   if (result.success) {
-    db.prepare(
-      `UPDATE drafts SET status = 'published', published_at = datetime('now') WHERE id = ?`
-    ).run(id);
+    await sql`UPDATE drafts SET status = 'published', published_at = now() WHERE id = ${id}`;
 
-    db.prepare(
-      `INSERT INTO publications (id, draft_id, platform, external_id, payload_json)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(
-      uuid(),
-      id,
-      draft.platform,
-      result.externalId ?? null,
-      JSON.stringify(draft.payload)
-    );
+    await sql`
+      INSERT INTO publications (id, draft_id, platform, external_id, payload_json)
+      VALUES (${uuid()}, ${id}, ${draft.platform}, ${result.externalId ?? null}, ${JSON.stringify(draft.payload)})
+    `;
 
-    recordLearningEvent(
+    await recordLearningEvent(
       "publish_success",
       { platform: draft.platform, externalId: result.externalId },
       id
     );
     logger.info(`Published draft ${id} → ${result.externalId}`);
   } else {
-    db.prepare(
-      `UPDATE drafts SET status = 'failed', error_message = ? WHERE id = ?`
-    ).run(result.error ?? "unknown error", id);
-    recordLearningEvent(
+    await sql`UPDATE drafts SET status = 'failed', error_message = ${result.error ?? "unknown error"} WHERE id = ${id}`;
+    await recordLearningEvent(
       "publish_failure",
       { platform: draft.platform, error: result.error },
       id
@@ -216,20 +180,18 @@ export async function publishApprovedDraft(id: string): Promise<Draft> {
     logger.error(`Publish failed for ${id}: ${result.error}`);
   }
 
-  return getDraft(id)!;
+  return (await getDraft(id))!;
 }
 
-export function expireOldDrafts() {
+export async function expireOldDrafts() {
   const hours = env.APPROVAL_TIMEOUT_HOURS;
-  const db = getDb();
-  const result = db
-    .prepare(
-      `UPDATE drafts SET status = 'expired'
-       WHERE status = 'pending'
-         AND datetime(created_at, '+' || ? || ' hours') < datetime('now')`
-    )
-    .run(hours);
-  if (result.changes > 0) {
-    logger.info(`Expired ${result.changes} old drafts`);
+  const sql = await getDb();
+  const result = await sql`
+    UPDATE drafts SET status = 'expired'
+    WHERE status = 'pending'
+      AND created_at + (${hours} || ' hours')::interval < now()
+  `;
+  if (result.count > 0) {
+    logger.info(`Expired ${result.count} old drafts`);
   }
 }
