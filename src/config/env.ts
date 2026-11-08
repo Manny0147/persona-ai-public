@@ -6,7 +6,7 @@ dotenv.config();
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  DATABASE_PATH: z.string().default("./data/persona.db"),
+  DATABASE_URL: z.string().url(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().default("https://api.openai.com/v1"),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
