@@ -21,8 +21,8 @@ import { PlatformName } from "../platforms/base.js";
 import { logger } from "../utils/logger.js";
 import { env } from "../config/env.js";
 
-export function observe() {
-  const db = getDb();
+export async function observe() {
+  const sql = await getDb();
   const signals: Array<{ source: string; type: string; data: unknown }> = [
     {
       source: "system",
@@ -31,7 +31,7 @@ export function observe() {
     },
   ];
 
-  const trends = refreshTrends();
+  const trends = await refreshTrends();
   signals.push({
     source: "trend-engine",
     type: "trends_refreshed",
@@ -39,37 +39,38 @@ export function observe() {
   });
 
   for (const s of signals) {
-    db.prepare(
-      `INSERT INTO observations (id, source, signal_type, payload_json) VALUES (?, ?, ?, ?)`
-    ).run(uuid(), s.source, s.type, JSON.stringify(s.data));
+    await sql`
+      INSERT INTO observations (id, source, signal_type, payload_json)
+      VALUES (${uuid()}, ${s.source}, ${s.type}, ${JSON.stringify(s.data)})
+    `;
   }
 
   return { signals, trends };
 }
 
-export function think(observeResult: ReturnType<typeof observe>) {
-  const model = loadPersonModel();
-  const opps = discoverOpportunities(5);
+export async function think(observeResult: Awaited<ReturnType<typeof observe>>) {
+  const model = await loadPersonModel();
+  const opps = await discoverOpportunities(5);
 
   return {
     intent: "create_aligned_content",
     topTrends: observeResult.trends.slice(0, 5),
     opportunities: opps,
-    personSummary: getProfileSummary(),
+    personSummary: await getProfileSummary(),
     rationale: `Pattern model voice=${model.voice.tone}; ${opps.length} opportunities from trends.`,
   };
 }
 
-export function draftFromOpportunity(
+export async function draftFromOpportunity(
   opportunityId?: string,
   platform?: PlatformName
 ) {
-  const generated = generatePost({
+  const generated = await generatePost({
     opportunityId,
     platform,
     variations: 2,
   });
-  const created = createDraft(
+  const created = await createDraft(
     generated.platform,
     generated.payload as any,
     generated.rationale,
@@ -79,13 +80,13 @@ export function draftFromOpportunity(
   return { draft: created, generated };
 }
 
-export function runCycle(platform?: PlatformName) {
-  expireOldDrafts();
-  const obs = observe();
-  const thought = think(obs);
+export async function runCycle(platform?: PlatformName) {
+  await expireOldDrafts();
+  const obs = await observe();
+  const thought = await think(obs);
 
   const bestOpp = thought.opportunities[0];
-  const { draft, generated } = draftFromOpportunity(bestOpp?.id, platform);
+  const { draft, generated } = await draftFromOpportunity(bestOpp?.id, platform);
 
   logger.info(
     `Cycle complete → draft ${draft.id} (${draft.platform}) from opportunity ${bestOpp?.id ?? "none"}`
@@ -100,11 +101,11 @@ export function runCycle(platform?: PlatformName) {
   };
 }
 
-export function getSystemStatus() {
-  const pending = listPendingDrafts();
-  const model = describePersonModel();
-  const trends = getTrends(5);
-  const opps = listOpportunities("open");
+export async function getSystemStatus() {
+  const pending = await listPendingDrafts();
+  const model = await describePersonModel();
+  const trends = await getTrends(5);
+  const opps = await listOpportunities("open");
   return {
     pendingApprovals: pending.length,
     openOpportunities: opps.length,
@@ -115,19 +116,17 @@ export function getSystemStatus() {
   };
 }
 
-export function triggerLearning() {
-  runLearningPass();
+export async function triggerLearning() {
+  await runLearningPass();
 }
 
-export function getRecentPosts(limit = 10) {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id, platform, external_id, payload_json, metrics_json, performance_tier, published_at
-       FROM publications ORDER BY published_at DESC LIMIT ?`
-    )
-    .all(limit) as any[];
-  return rows.map((r) => ({
+export async function getRecentPosts(limit = 10) {
+  const sql = await getDb();
+  const rows = await sql`
+    SELECT id, platform, external_id, payload_json, metrics_json, performance_tier, published_at
+    FROM publications ORDER BY published_at DESC LIMIT ${limit}
+  `;
+  return rows.map((r: any) => ({
     id: r.id,
     platform: r.platform,
     externalId: r.external_id,
@@ -138,17 +137,14 @@ export function getRecentPosts(limit = 10) {
   }));
 }
 
-export function getAnalyticsSummary() {
-  const db = getDb();
-  const byPlatform = db
-    .prepare(
-      `SELECT platform, COUNT(*) as count,
-              SUM(CASE WHEN performance_tier = 'high' THEN 1 ELSE 0 END) as high_count
-       FROM publications GROUP BY platform`
-    )
-    .all() as any[];
-
-  const recent = getRecentPosts(20);
+export async function getAnalyticsSummary() {
+  const sql = await getDb();
+  const byPlatform = await sql`
+    SELECT platform, COUNT(*) as count,
+           SUM(CASE WHEN performance_tier = 'high' THEN 1 ELSE 0 END) as high_count
+    FROM publications GROUP BY platform
+  `;
+  const recent = await getRecentPosts(20);
   return {
     byPlatform,
     recentCount: recent.length,
