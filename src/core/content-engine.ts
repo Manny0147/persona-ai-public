@@ -1,7 +1,7 @@
 import { v4 as uuid } from "uuid";
 import { getDb } from "../db/client.js";
 import { loadPersonModel, Interest } from "./person-model.js";
-import { getTrends, Trend } from "./trend-engine.js";
+import { getTrends } from "./trend-engine.js";
 import { PlatformName } from "../platforms/base.js";
 import { logger } from "../utils/logger.js";
 
@@ -36,7 +36,6 @@ const PLATFORMS: PlatformName[] = [
 
 function pickPlatform(interests: Interest[], preferred?: PlatformName): PlatformName {
   if (preferred) return preferred;
-  // Prefer platforms that appear on high-weight interests
   for (const i of interests) {
     if (i.platforms?.length) {
       const p = i.platforms[0] as PlatformName;
@@ -48,7 +47,7 @@ function pickPlatform(interests: Interest[], preferred?: PlatformName): Platform
 
 function craftText(
   topic: string,
-  voice: ReturnType<typeof loadPersonModel>["voice"],
+  voice: Awaited<ReturnType<typeof loadPersonModel>>["voice"],
   voiceStyle: string
 ): string {
   const openers = {
@@ -72,13 +71,10 @@ function craftText(
   return body + (voice.emojiUsage === "moderate" ? " ✨" : "");
 }
 
-/**
- * Surface content opportunities from trends × interest map.
- */
-export function discoverOpportunities(limit = 8): ContentOpportunity[] {
-  const model = loadPersonModel();
-  const trends = getTrends(12);
-  const db = getDb();
+export async function discoverOpportunities(limit = 8): Promise<ContentOpportunity[]> {
+  const model = await loadPersonModel();
+  const trends = await getTrends(12);
+  const sql = await getDb();
   const results: ContentOpportunity[] = [];
 
   for (const trend of trends.slice(0, limit)) {
@@ -102,18 +98,11 @@ export function discoverOpportunities(limit = 8): ContentOpportunity[] {
 
     const interestTags = matchingInterests.map((i) => i.topic);
 
-    db.prepare(
-      `INSERT INTO content_opportunities
-         (id, title, description, platform, trend_id, interest_tags_json, priority, status)
-       VALUES (?, ?, ?, NULL, ?, ?, ?, 'open')`
-    ).run(
-      id,
-      title,
-      description,
-      trend.id,
-      JSON.stringify(interestTags),
-      priority
-    );
+    await sql`
+      INSERT INTO content_opportunities
+        (id, title, description, platform, trend_id, interest_tags_json, priority, status)
+      VALUES (${id}, ${title}, ${description}, NULL, ${trend.id}, ${JSON.stringify(interestTags)}, ${priority}, 'open')
+    `;
 
     results.push({
       id,
@@ -131,23 +120,14 @@ export function discoverOpportunities(limit = 8): ContentOpportunity[] {
   return results.sort((a, b) => b.priority - a.priority);
 }
 
-export function listOpportunities(status: "open" | "all" = "open"): ContentOpportunity[] {
-  const db = getDb();
+export async function listOpportunities(status: "open" | "all" = "open"): Promise<ContentOpportunity[]> {
+  const sql = await getDb();
   const rows =
     status === "open"
-      ? (db
-          .prepare(
-            `SELECT * FROM content_opportunities WHERE status = 'open'
-             ORDER BY priority DESC LIMIT 20`
-          )
-          .all() as any[])
-      : (db
-          .prepare(
-            `SELECT * FROM content_opportunities ORDER BY created_at DESC LIMIT 30`
-          )
-          .all() as any[]);
+      ? await sql`SELECT * FROM content_opportunities WHERE status = 'open' ORDER BY priority DESC LIMIT 20`
+      : await sql`SELECT * FROM content_opportunities ORDER BY created_at DESC LIMIT 30`;
 
-  return rows.map((r) => ({
+  return rows.map((r: any) => ({
     id: r.id,
     title: r.title,
     description: r.description ?? undefined,
@@ -160,34 +140,28 @@ export function listOpportunities(status: "open" | "all" = "open"): ContentOppor
   }));
 }
 
-/**
- * Generate a post (and optional variations) grounded in Person Model + optional opportunity.
- */
-export function generatePost(opts: {
+export async function generatePost(opts: {
   platform?: PlatformName;
   topic?: string;
   opportunityId?: string;
   variations?: number;
-}): GeneratedPost {
-  const model = loadPersonModel();
+}): Promise<GeneratedPost> {
+  const model = await loadPersonModel();
   let topic = opts.topic;
   let opportunityId = opts.opportunityId;
 
   if (opportunityId) {
-    const db = getDb();
-    const opp = db
-      .prepare(`SELECT * FROM content_opportunities WHERE id = ?`)
-      .get(opportunityId) as any;
+    const sql = await getDb();
+    const rows = await sql`SELECT * FROM content_opportunities WHERE id = ${opportunityId}`;
+    const opp = rows[0] as any;
     if (opp) {
       topic = topic || opp.title.replace(/^Post about “|”$/g, "");
-      db.prepare(
-        `UPDATE content_opportunities SET status = 'drafted' WHERE id = ?`
-      ).run(opportunityId);
+      await sql`UPDATE content_opportunities SET status = 'drafted' WHERE id = ${opportunityId}`;
     }
   }
 
   if (!topic) {
-    const trends = getTrends(5);
+    const trends = await getTrends(5);
     topic = trends[0]?.topic || model.interests[0]?.topic || "building in public";
   }
 
@@ -233,12 +207,9 @@ export function generatePost(opts: {
   };
 }
 
-/**
- * Create a simple multi-day content plan.
- */
-export function createContentPlan(name: string, horizonDays = 7, postsPerDay = 1) {
-  const model = loadPersonModel();
-  const trends = getTrends(horizonDays * postsPerDay + 3);
+export async function createContentPlan(name: string, horizonDays = 7, postsPerDay = 1) {
+  const model = await loadPersonModel();
+  const trends = await getTrends(horizonDays * postsPerDay + 3);
   const items: Array<{
     day: number;
     platform: PlatformName;
@@ -261,22 +232,20 @@ export function createContentPlan(name: string, horizonDays = 7, postsPerDay = 1
   }
 
   const id = uuid();
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO content_plans (id, name, horizon_days, items_json, status)
-     VALUES (?, ?, ?, ?, 'draft')`
-  ).run(id, name, horizonDays, JSON.stringify(items));
+  const sql = await getDb();
+  await sql`
+    INSERT INTO content_plans (id, name, horizon_days, items_json, status)
+    VALUES (${id}, ${name}, ${horizonDays}, ${JSON.stringify(items)}, 'draft')
+  `;
 
   logger.info(`Content plan created: ${id} (${items.length} slots)`);
   return { id, name, horizonDays, items, status: "draft" as const };
 }
 
-export function listContentPlans() {
-  const db = getDb();
-  const rows = db
-    .prepare(`SELECT * FROM content_plans ORDER BY created_at DESC LIMIT 20`)
-    .all() as any[];
-  return rows.map((r) => ({
+export async function listContentPlans() {
+  const sql = await getDb();
+  const rows = await sql`SELECT * FROM content_plans ORDER BY created_at DESC LIMIT 20`;
+  return rows.map((r: any) => ({
     id: r.id,
     name: r.name,
     horizonDays: r.horizon_days,
