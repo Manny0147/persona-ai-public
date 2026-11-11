@@ -10,35 +10,33 @@ export type LearningEventType =
   | "publish_success"
   | "publish_failure";
 
-export function recordLearningEvent(
+export async function recordLearningEvent(
   eventType: LearningEventType,
   payload: Record<string, unknown> = {},
   draftId?: string
 ) {
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO learning_events (id, draft_id, event_type, payload_json)
-     VALUES (?, ?, ?, ?)`
-  ).run(uuid(), draftId ?? null, eventType, JSON.stringify(payload));
+  const sql = await getDb();
+  await sql`
+    INSERT INTO learning_events (id, draft_id, event_type, payload_json)
+    VALUES (${uuid()}, ${draftId ?? null}, ${eventType}, ${JSON.stringify(payload)})
+  `;
 }
 
-export function runLearningPass() {
-  const db = getDb();
-  const recent = db
-    .prepare(
-      `SELECT event_type, payload_json, draft_id
-       FROM learning_events
-       ORDER BY created_at DESC
-       LIMIT 50`
-    )
-    .all() as Array<{ event_type: string; payload_json: string; draft_id: string | null }>;
+export async function runLearningPass() {
+  const sql = await getDb();
+  const recent = await sql`
+    SELECT event_type, payload_json, draft_id
+    FROM learning_events
+    ORDER BY created_at DESC
+    LIMIT 50
+  `;
 
   if (recent.length === 0) {
     logger.debug("No learning events yet");
     return;
   }
 
-  const model = loadPersonModel();
+  const model = await loadPersonModel();
   const prefs = { ...(model.preferences as Record<string, any>) };
   const traits = { ...model.traits };
 
@@ -82,6 +80,6 @@ export function runLearningPass() {
     traits.approval_rate = Number(rate.toFixed(2));
   }
 
-  updatePersonModel({ preferences: prefs, traits });
+  await updatePersonModel({ preferences: prefs, traits });
   logger.info("Learning pass completed", { approvals, rejections });
 }
