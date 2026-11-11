@@ -55,6 +55,10 @@ app.get("/api/drafts/pending", async (_req, res) => {
   res.json(await listPendingDrafts());
 });
 
+app.get("/api/drafts/scheduled", async (_req, res) => {
+  res.json(await listScheduledDrafts());
+});
+
 app.get("/api/drafts", async (_req, res) => {
   res.json(await listDrafts());
 });
@@ -122,10 +126,6 @@ app.post("/api/drafts/:id/schedule", async (req, res) => {
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
-});
-
-app.get("/api/drafts/scheduled", async (_req, res) => {
-  res.json(await listScheduledDrafts());
 });
 
 app.get("/api/profile", async (_req, res) => {
