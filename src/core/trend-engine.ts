@@ -14,8 +14,8 @@ export interface Trend {
   expiresAt?: string;
 }
 
-export function refreshTrends(platform?: string): Trend[] {
-  const model = loadPersonModel();
+export async function refreshTrends(platform?: string): Promise<Trend[]> {
+  const model = await loadPersonModel();
   const interestTopics = model.interests.map((i) => i.topic);
   const seedTopics = [
     ...interestTopics,
@@ -29,11 +29,11 @@ export function refreshTrends(platform?: string): Trend[] {
 
   const unique = [...new Set(seedTopics.map((t) => t.toLowerCase()))];
 
-  const db = getDb();
-  db.prepare(
-    `UPDATE trends SET expires_at = datetime('now')
-     WHERE expires_at IS NULL OR expires_at > datetime('now')`
-  ).run();
+  const sql = await getDb();
+  await sql`
+    UPDATE trends SET expires_at = now()
+    WHERE expires_at IS NULL OR expires_at > now()
+  `;
 
   const created: Trend[] = [];
 
@@ -52,10 +52,10 @@ export function refreshTrends(platform?: string): Trend[] {
       ),
     };
 
-    db.prepare(
-      `INSERT INTO trends (id, platform, topic, score, source, payload_json, expires_at)
-       VALUES (?, ?, ?, ?, 'pattern-engine', ?, datetime('now', '+2 days'))`
-    ).run(id, platform ?? null, topic, score, JSON.stringify(payload));
+    await sql`
+      INSERT INTO trends (id, platform, topic, score, source, payload_json, expires_at)
+      VALUES (${id}, ${platform ?? null}, ${topic}, ${score}, 'pattern-engine', ${JSON.stringify(payload)}, now() + interval '2 days')
+    `;
 
     created.push({
       id,
@@ -72,33 +72,29 @@ export function refreshTrends(platform?: string): Trend[] {
   return created.sort((a, b) => b.score - a.score);
 }
 
-export function getTrends(limit = 15, platform?: string): Trend[] {
-  const db = getDb();
-  let rows: any[];
+export async function getTrends(limit = 15, platform?: string): Promise<Trend[]> {
+  const sql = await getDb();
+  let rows;
   if (platform) {
-    rows = db
-      .prepare(
-        `SELECT * FROM trends
-         WHERE (platform = ? OR platform IS NULL)
-           AND (expires_at IS NULL OR expires_at > datetime('now'))
-         ORDER BY score DESC LIMIT ?`
-      )
-      .all(platform, limit);
+    rows = await sql`
+      SELECT * FROM trends
+      WHERE (platform = ${platform} OR platform IS NULL)
+        AND (expires_at IS NULL OR expires_at > now())
+      ORDER BY score DESC LIMIT ${limit}
+    `;
   } else {
-    rows = db
-      .prepare(
-        `SELECT * FROM trends
-         WHERE expires_at IS NULL OR expires_at > datetime('now')
-         ORDER BY score DESC LIMIT ?`
-      )
-      .all(limit);
+    rows = await sql`
+      SELECT * FROM trends
+      WHERE expires_at IS NULL OR expires_at > now()
+      ORDER BY score DESC LIMIT ${limit}
+    `;
   }
 
   if (rows.length === 0) {
     return refreshTrends(platform);
   }
 
-  return rows.map((r) => ({
+  return rows.map((r: any) => ({
     id: r.id,
     platform: r.platform ?? undefined,
     topic: r.topic,
@@ -110,6 +106,6 @@ export function getTrends(limit = 15, platform?: string): Trend[] {
   }));
 }
 
-export function getTopTrendTopics(n = 5): string[] {
-  return getTrends(n).map((t) => t.topic);
+export async function getTopTrendTopics(n = 5): Promise<string[]> {
+  return (await getTrends(n)).map((t) => t.topic);
 }
