@@ -54,16 +54,15 @@ const DEFAULT_BEHAVIOR: BehaviorModel = {
   topicCycleDays: 7,
 };
 
-export function loadPersonModel(): PersonModel {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT traits_json, preferences_json, voice_style, voice_json,
-              interests_json, behavior_json, audience_json, goals_json,
-              performance_tiers_json, updated_at
-       FROM person_model WHERE id = 1`
-    )
-    .get() as any;
+export async function loadPersonModel(): Promise<PersonModel> {
+  const sql = await getDb();
+  const rows = await sql`
+    SELECT traits_json, preferences_json, voice_style, voice_json,
+           interests_json, behavior_json, audience_json, goals_json,
+           performance_tiers_json, updated_at
+    FROM person_model WHERE id = 1
+  `;
+  const row = rows[0] as any;
 
   return {
     traits: JSON.parse(row.traits_json || "{}"),
@@ -79,8 +78,8 @@ export function loadPersonModel(): PersonModel {
   };
 }
 
-export function updatePersonModel(partial: Partial<PersonModel>): PersonModel {
-  const current = loadPersonModel();
+export async function updatePersonModel(partial: Partial<PersonModel>): Promise<PersonModel> {
+  const current = await loadPersonModel();
   const next: PersonModel = {
     traits: { ...current.traits, ...(partial.traits || {}) },
     preferences: { ...current.preferences, ...(partial.preferences || {}) },
@@ -97,38 +96,28 @@ export function updatePersonModel(partial: Partial<PersonModel>): PersonModel {
     updatedAt: new Date().toISOString(),
   };
 
-  const db = getDb();
-  db.prepare(
-    `UPDATE person_model SET
-      traits_json = ?,
-      preferences_json = ?,
-      voice_style = ?,
-      voice_json = ?,
-      interests_json = ?,
-      behavior_json = ?,
-      audience_json = ?,
-      goals_json = ?,
-      performance_tiers_json = ?,
-      updated_at = datetime('now')
-     WHERE id = 1`
-  ).run(
-    JSON.stringify(next.traits),
-    JSON.stringify(next.preferences),
-    next.voiceStyle,
-    JSON.stringify(next.voice),
-    JSON.stringify(next.interests),
-    JSON.stringify(next.behavior),
-    JSON.stringify(next.audience),
-    JSON.stringify(next.goals),
-    JSON.stringify(next.performanceTiers)
-  );
+  const sql = await getDb();
+  await sql`
+    UPDATE person_model SET
+      traits_json = ${JSON.stringify(next.traits)},
+      preferences_json = ${JSON.stringify(next.preferences)},
+      voice_style = ${next.voiceStyle},
+      voice_json = ${JSON.stringify(next.voice)},
+      interests_json = ${JSON.stringify(next.interests)},
+      behavior_json = ${JSON.stringify(next.behavior)},
+      audience_json = ${JSON.stringify(next.audience)},
+      goals_json = ${JSON.stringify(next.goals)},
+      performance_tiers_json = ${JSON.stringify(next.performanceTiers)},
+      updated_at = now()
+    WHERE id = 1
+  `;
 
   logger.info("Person / Pattern model updated");
   return next;
 }
 
-export function upsertInterest(topic: string, weight: number, platforms?: string[]) {
-  const model = loadPersonModel();
+export async function upsertInterest(topic: string, weight: number, platforms?: string[]) {
+  const model = await loadPersonModel();
   const existing = model.interests.find(
     (i) => i.topic.toLowerCase() === topic.toLowerCase()
   );
@@ -148,8 +137,8 @@ export function upsertInterest(topic: string, weight: number, platforms?: string
   return updatePersonModel({ interests: model.interests });
 }
 
-export function describePersonModel(): string {
-  const m = loadPersonModel();
+export async function describePersonModel(): Promise<string> {
+  const m = await loadPersonModel();
   const topInterests = m.interests
     .slice(0, 5)
     .map((i) => `${i.topic}(${i.weight.toFixed(2)})`)
@@ -163,8 +152,8 @@ export function describePersonModel(): string {
   ].join("\n");
 }
 
-export function getProfileSummary() {
-  const m = loadPersonModel();
+export async function getProfileSummary() {
+  const m = await loadPersonModel();
   return {
     voice: m.voice,
     voiceStyle: m.voiceStyle,
